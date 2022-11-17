@@ -5,8 +5,9 @@ import sys
 import pickle
 import random
 import time
+import calendar
 import requests
-
+from log import logger
 from lxml import etree
 
 DEFAULT_TIMEOUT = 10
@@ -57,6 +58,7 @@ class Session(object):
             local_cookies = pickle.load(f)
         self.sess.cookies.update(local_cookies)
         self.isLogin = self._validateCookies()
+        # logger.info(self.sess.cookies.text)
 
     # 验证 cookie
     def _validateCookies(self):
@@ -76,7 +78,7 @@ class Session(object):
         except Exception as e:
             return False
 
-        self.sess = requests.session()
+        self.sess = self.sess.session()
         return False
 
     # 获取登录页
@@ -159,22 +161,45 @@ class Session(object):
             'area': areaId,
             'num': skuNum
         }
-        resp = requests.get(url=url, params=payload, headers=self.headers)
-        return resp
 
+        resp = self.sess.get(url=url, params=payload, headers=self.headers)
+        return resp
+        
+    def getItemStockDetail(self, skuId=1, areaId=1):
+        """ 查询商品是否脱销
+        :param skuId
+        :param areaId
+        """
+        # https://cd.jd.com/stocks?type=getstocks&skuIds=100040431255&area=1_2805_145820_0&_=1668650142993
+        url = 'https://cd.jd.com/stocks'
+
+        timestamp = str(int(time.time() * 1000))
+        payload = {
+            'type': 'getstocks',
+            'skuIds': skuId,
+            'area': areaId,
+            '_': timestamp
+        }
+        resp = self.sess.get(url=url, params=payload, headers=self.headers)
+        return resp
+        
     def fetchItemDetail(self, skuId):
         """ 解析商品信息
         :param skuId
         """
-        resp = self.getItemDetail(skuId).json()
-        shopId = resp['shopInfo']['shop']['shopId']
-        detail = dict(venderId=shopId)
-        if 'YuShouInfo' in resp:
-            detail['yushouUrl'] = resp['YuShouInfo']['url']
-        if 'miaoshaInfo' in resp:
-            detail['startTime'] = resp['miaoshaInfo']['startTime']
-            detail['endTime'] = resp['miaoshaInfo']['endTime']
-        self.itemDetails[skuId] = detail
+        result = self.getItemDetail(skuId)
+        try:
+            resp = json.loads(result.text)
+            shopId = resp['shopInfo']['shop']['shopId']
+            detail = dict(venderId=shopId)
+            if 'YuShouInfo' in resp:
+                detail['yushouUrl'] = resp['YuShouInfo']['url']
+            if 'miaoshaInfo' in resp:
+                detail['startTime'] = resp['miaoshaInfo']['startTime']
+                detail['endTime'] = resp['miaoshaInfo']['endTime']
+            self.itemDetails[skuId] = detail
+        except Exception as e:
+            logger.error(result.text)
 
     ############## 库存方法 #############
     def getItemStock(self, skuId, skuNum, areaId):
@@ -184,8 +209,15 @@ class Session(object):
         :param areadId: 地区id
         :return: 商品是否有货 True/False
         """
-        resp = self.getItemDetail(skuId, skuNum, areaId).json()
-        return 'stockInfo' in resp and resp['stockInfo']['isStock']
+        result = self.getItemStockDetail(skuId, areaId)
+        try:
+            resp = json.loads(result.text)
+            if resp[str(skuId)]['eb'] == '0':
+                return True
+            return False
+        except Exception as e:
+            logger.error(result.text)
+        return None
 
     ############## 购物车相关 #############
 
