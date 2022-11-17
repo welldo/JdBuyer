@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 import time
+import random
 
 from config import global_config
 from log import logger
 from exception import JDException
 from JdSession import Session
 from timer import Timer
+
 from utils import (
     save_image,
     open_image,
@@ -78,9 +80,11 @@ class Buyer(object):
 
         while True:
             try:
-                if not self.session.getItemStock(skuId, skuNum, areaId):
-                    logger.info('不满足下单条件，{0}s后进行下一次查询'.format(stockInterval))
-                else:
+                stocktime = random.randint(stockInterval, 60)
+                result = self.session.getItemStock(skuId, skuNum, areaId)
+                if result == False:
+                    logger.info('不满足下单条件，{0}s后进行下一次查询'.format(stocktime))
+                elif result == True:
                     logger.info('{0} 满足下单条件，开始执行'.format(skuId))
                     if self.session.trySubmitOrder(skuId, skuNum, areaId, submitRetry, submitInterval):
                         logger.info('下单成功')
@@ -88,17 +92,19 @@ class Buyer(object):
                             send_wechat(
                                 message='JdBuyerApp', desp='您的商品已下单成功，请及时支付订单', sckey=self.scKey)
                         return
+                else:
+                     logger.error('查询库存出现错误，{0}s后进行下一次查询'.format(stocktime))
             except Exception as e:
                 logger.error(e)
-            time.sleep(stockInterval)
+            time.sleep(stocktime)
 
 
 if __name__ == '__main__':
 
     # 商品sku
-    skuId = '100015253059'
+    skuId = '100040431255'
     # 区域id(可根据工程 area_id 目录查找)
-    areaId = '1_2901_55554_0'
+    areaId = '1_2805_2832'
     # 购买数量
     skuNum = 1
     # 库存查询间隔(秒)
